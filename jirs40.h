@@ -1,0 +1,36 @@
+/*
+ * jirs40.c
+ *
+ *  Created on: Oct 8, 2024
+ *      Author: JDT
+ */
+
+#include "main.h"		//To access ADC handles
+#include "jirs40_lookup.h"
+
+typedef enum
+{
+	JIRS40_Conversion_Start,
+	JIRS40_Read_Start,
+	JIRS40_Read_Done,
+	JIRS40_Meas_Error
+} JIRS40_Meas_State;
+
+typedef enum
+{
+	JIRS40_ERROR_NONE = 0,
+	JIRS40_ERROR_INIT = 1,
+	JIRS40_ERROR_CONV = 2,
+	JIRS40_ERROR_READ = 3,
+	JIRS40_ERROR_UNKNOWN = 4,
+
+}JIRS40_Error;
+
+//Each "sensor" should contain functions for setup and measure
+//This function is called when sensor should be switched
+void JIRS40_Setup();
+void JIRS40_Object(uint16_t *signal);
+void JIRS40_Ambient(int *signal, bool *result);
+void JIRS40_Convert(uint16_t raw_adc, uint16_t ambient, int *output);
+
+uint8_t jirs40_Reset();
