@@ -1,0 +1,1 @@
+User acknowledges and agrees that the use of the Software is at User sole risk. The Software and related documentation are provided “AS IS” and without any warranty of any kind and JonDeTech EXPRESSLY DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
