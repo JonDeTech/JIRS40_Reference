@@ -15,13 +15,13 @@
  * 1 thread calling JIRS40_Ambient() and updating the ambient temperature (at desired rate, but 5-7 Hz is max)
  * 1 thread calling JIRS40_Object() and updating raw object values. Then JIRS40_Convert() convert whenever raw object value 
  * or ambient temperature has changed.
+ * 
+ * This example is made for a STM32 Platform. Requires modification if other platform is used!
  */
 
 #include "jirs40.h"
-#include "helper_functions.h"
-#include "lptim.h"				 //to gain access to timer (htim21 which is defined below)
 #include "adc.h"				//access to ADC data and handles
-#include "tim.h"				//access to timer and handles
+#include "tim.h"				//to gain access to timer (htim21 which is defined below)
 #include <stdlib.h>
 
 //The ADC channel where analog output of JIRS40 is connected
@@ -40,8 +40,35 @@ static void jirs40_Init();
 static void jirs40_WriteByte(uint8_t ascii);
 static uint8_t jirs40_ReadByte();
 static JIRS40_Meas_State jirs40_Convert_And_Read_Ambient(float *value);
-
+static void jirs40_init_parameters(JIRS40_Calibration * c, const JIRS40_Cal_Param *input);
 JIRS40_Meas_State measureState = JIRS40_Conversion_Start;
+const float ADC_REFERENCE = 3.3f; //The supply/reference to the ADC module. Could either be dynamically measured or hardcoded
+/*
+* Calibration points below can be used to updated jirs40_cal struct.
+* Update the points and call jirs40_init_parameters(&jirs40_cal, &jirs40_cbt_param_default);
+*/
+const JIRS40_Cal_Param jirs40_cbt_param_default =
+{
+	.calibrationP1_Object = 40.0,
+	.calibrationP1_Ambient = 23.15,
+	.calibrationP1_Voltage = 1.894,
+	.calibrationP2_Object = 30.0,
+	.calibrationP2_Ambient = 22.96,
+	.calibrationP2_Voltage = 1.474,
+};
+
+static JIRS40_Calibration jirs40_cal=
+{
+		.adc_max = 65535,
+		.sConP1 = 0,
+		.sConP2 = 0,
+		//Hardcoded (but can be updated)
+		.SystemBias_P1P2 = -1.19925157,
+		.SysCal_P1P2 = 4.00492E-10,
+		.params  = {0},
+};
+
+static JIRS40_Calibration * jirs40_cal = &jirs40_cal;
 
 void JIRS40_Setup()
 {
@@ -105,55 +132,43 @@ void JIRS40_Ambient(int *signal, bool *result)
  * ambient temperature (in centigrades, 10 degrees celsius means 1000 centrigrades)
  * output: the calculated object temperature
  */
-void JIRS40_Convert(uint16_t raw_adc, uint16_t ambient, int *output)
+vvoid JIRS40_Convert(uint16_t raw_adc, uint16_t ambient, int *output)
 {
 	//Adc value is in 16 bit
-	int x = ambient;
-	int y = raw_adc;
+	float raw = (float)raw_adc;
+	float VDD_Measured = ADC_REFERENCE;
+	double measured_voltage = VDD_Measured * (raw/jirs40_cal->adc_max);
+	double amb = (double)ambient / 100;
+	//No longer using lookup table, now calculations instead.
 
-	//Find the closest ambient temperature (to know which tables to search in)
-	int ambient_integer = ambient / 100;
-	int x1 = ambient_integer - AMBIENT_START;
-	int x2 = ambient_integer + 1 - AMBIENT_START;
+	double temp1 = pow(amb+273.15, 4);
+	double temperature = pow(((measured_voltage + jirs40_cal->SystemBias_P1P2)/jirs40_cal->SysCal_P1P2 + temp1), 0.25) - 273.15;
 
-	if (x1 < 0 || x1 > NO_AMBIENT || x2 < 0 || x2 > NO_AMBIENT)
-	{
-		*output = 0;
-		return;
-	}
+	*output = (int)(temperature*100);
+}
 
-	//Search the arrays for the first match
-	int Q11 = 0, y1 = 0;
-	int Q12 = 0, y2 = 0;
-	int Q21 = 0, y3 = 0;
-	int Q22 = 0, y4 = 0;
+static void jirs40_init_parameters(JIRS40_Calibration * c, const JIRS40_Cal_Param *input)
+{
+	//Update our calculation parameters
+	c->adc_max = 65535;
+	c->params.calibrationP1_Object = input->calibrationP1_Object;
+	c->params.calibrationP1_Ambient = input->calibrationP1_Ambient;
+	c->params.calibrationP1_Voltage = input->calibrationP1_Voltage;
 
-	bool result1 = FindAdjacent(&jirs40_lookup[x1][0], y, &Q11, &Q12, &y1, &y2,NO_OBJECT);
-	bool result2 = FindAdjacent(&jirs40_lookup[x2][0], y, &Q21, &Q22, &y3, &y4,NO_OBJECT);
+	c->params.calibrationP2_Object = input->calibrationP2_Object;
+	c->params.calibrationP2_Ambient = input->calibrationP2_Ambient;
+	c->params.calibrationP2_Voltage = input->calibrationP2_Voltage;
 
-	if(!result1 || !result2)
-	{
-		//Something went wrong.
-		*output = 0;
-		return;
-	}
-	//Offset object list values
-	Q11 = (Q11 + OBJECT_START) * 100;
-	Q12 = (Q12 + OBJECT_START) * 100;
-	Q21 = (Q21 + OBJECT_START) * 100;
-	Q22 = (Q22 + OBJECT_START) * 100;
-	//Offset ambient values
-	x1 = (x1 + AMBIENT_START) * 100;
-	x2 = (x2 + AMBIENT_START) * 100;
+	//Lets get a pointer to params to avoid bloating calculations below
+	JIRS40_Cal_Param *p = &c->params;
 
-	//Interpolate first list
-	int first = linear(y, y1, y2, Q11, Q12);
-	//Interpolate second list
-	int second = linear(y, y3, y4, Q21, Q22);
-	//Interpolate in x-direction
-	int result = linear(x, x1, x2, first, second);
-
-	*output = result;
+	//Calculate new bias etc based upon new data.
+	c->sConP1 = pow(p->calibrationP1_Object + 273.15f, 4) - pow(p->calibrationP1_Ambient + 273.15, 4);
+	c->sConP2 = pow(p->calibrationP2_Object + 273.15f, 4) - pow(p->calibrationP2_Ambient + 273.15, 4);
+	c->SystemBias_P1P2 =(p->calibrationP1_Voltage-(c->sConP1/c->sConP2)*p->calibrationP2_Voltage)/((c->sConP1/c->sConP2)-1);
+	c->SysCal_P1P2 = (p->calibrationP2_Voltage + c->SystemBias_P1P2) / c->sConP2;
+	//Update global point
+	jirs40_cal = c;
 }
 
 #define OPTIMIZE_LEVEL 3
@@ -219,11 +234,11 @@ __attribute__ ((optimize(OPTIMIZE_LEVEL))) static void SetDir(IO io)
 	switch(io)
 	{
 	case Input:
-		//Clear bits
+		//Clear bits - Changes GPIO to input
 		D0_PORT->MODER &= ~(0x03 << GPIO_MODE_SHIFT);
 		break;
 	case Output:
-		//Set bits to 01
+		//Set bits - Changes GPIO to output
 		D0_PORT->MODER |= (0x01 << GPIO_MODE_SHIFT);
 		break;
 	}

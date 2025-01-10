@@ -26,6 +26,27 @@ typedef enum
 
 }JIRS40_Error;
 
+typedef struct
+{
+	double calibrationP1_Object;
+	double calibrationP1_Ambient;
+	double calibrationP1_Voltage;
+	double calibrationP2_Object;
+	double calibrationP2_Ambient;
+	double calibrationP2_Voltage;
+
+}JIRS40_Cal_Param;
+
+typedef struct
+{
+	double adc_max;
+	double sConP1;
+	double sConP2;
+	double SystemBias_P1P2;
+	double SysCal_P1P2;
+	JIRS40_Cal_Param params;
+}JIRS40_Calibration;
+
 //Each "sensor" should contain functions for setup and measure
 //This function is called when sensor should be switched
 void JIRS40_Setup();
