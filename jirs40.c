@@ -472,8 +472,7 @@ JIRS40_Meas_State jirs40_Convert_And_Read_Ambient(float *value)
 		}
 
 	}
-	if(error != JIRS40_ERROR_NONE)
-		log_trace("JIRS40 error:%d",error);
+	
 	return measureState;
 }
 
