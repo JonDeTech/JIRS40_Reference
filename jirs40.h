@@ -6,7 +6,6 @@
  */
 
 #include "main.h"		//To access ADC handles
-#include "jirs40_lookup.h"
 
 typedef enum
 {
